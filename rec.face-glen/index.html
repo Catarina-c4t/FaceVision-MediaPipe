@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FaceVision AI - Reconhecimento Facial com MediaPipe</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- CSS Principal -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- MediaPipe CDN Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Barra Superior / Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 3H5a2 2 0 0 0-2 2v4m0 6v4a2 2 0 0 0 2 2h4m6 0h4a2 2 0 0 0 2-2v-4m0-6V5a2 2 0 0 0-2-2h-4"/>
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 9v1m0 4v1m-3-3h1m4 0h1"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h1>FaceVision <span>MediaPipe</span></h1>
+          <p>Reconhecimento Facial Biométrico em Tempo Real</p>
+        </div>
+      </div>
+
+      <!-- Métricas em Tempo Real -->
+      <div class="header-badges">
+        <div class="badge status-badge" id="cameraStatusBadge">
+          <span class="status-dot dot-off" id="cameraStatusDot"></span>
+          <span id="cameraStatusText">Câmera Desligada</span>
+        </div>
+        <div class="badge metric-badge">
+          <span class="metric-label">FPS:</span>
+          <span class="metric-val" id="fpsDisplay">0</span>
+        </div>
+        <div class="badge metric-badge">
+          <span class="metric-label">Rostos:</span>
+          <span class="metric-val" id="faceCountDisplay">0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main class="main-content">
+      
+      <!-- Coluna da Esquerda: Câmera e Visualizador -->
+      <section class="camera-column">
+        <div class="video-card">
+          <div class="video-viewport" id="viewportContainer">
+            
+            <!-- Elemento de Vídeo da Câmera -->
+            <video id="webcam" playsinline muted autoplay></video>
+            
+            <!-- Canvas Sobreposto para Desenhar o Mesh e Caixas -->
+            <canvas id="overlayCanvas"></canvas>
+
+            <!-- Linha de Scanner Laser Holográfica (Efeito Futurista) -->
+            <div class="laser-scanner" id="laserScanner"></div>
+
+            <!-- Overlay de Boas-vindas / Câmera Desligada -->
+            <div class="camera-off-overlay" id="cameraOffOverlay">
+              <div class="off-icon-circle">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                  <circle cx="12" cy="13" r="4"/>
+                  <line x1="1" y1="1" x2="23" y2="23" stroke="#f43f5e" stroke-width="2"/>
+                </svg>
+              </div>
+              <h3>Câmera Desconectada</h3>
+              <p>Inicie a câmera para ativar o rastreamento facial e reconhecimento pelo MediaPipe</p>
+              <button class="btn btn-primary btn-large" id="startCamPromptBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                Ligar Câmera Agora
+              </button>
+            </div>
+
+            <!-- Loader de Inicialização dos Modelos -->
+            <div class="model-loading-overlay" id="modelLoadingOverlay">
+              <div class="spinner"></div>
+              <h4>Carregando MediaPipe Face Mesh...</h4>
+              <p>Preparando modelos de visão computacional WebAssembly</p>
+            </div>
+
+            <!-- Chips Flutuantes de Diagnóstico Biométrico -->
+            <div class="hud-floating-panel" id="hudPanel">
+              <div class="hud-item" id="hudRecognized">
+                <span class="hud-icon">👤</span>
+                <span class="hud-text">Aguardando rosto...</span>
+              </div>
+              <div class="hud-item" id="hudExpression">
+                <span class="hud-icon">😊</span>
+                <span class="hud-text">Expressão: --</span>
+              </div>
+              <div class="hud-item" id="hudEyes">
+                <span class="hud-icon">👀</span>
+                <span class="hud-text">Olhos: --</span>
+              </div>
+              <div class="hud-item" id="hudPose">
+                <span class="hud-icon">📐</span>
+                <span class="hud-text">Pose: --</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Barra de Ações Rápidas abaixo do vídeo -->
+          <div class="quick-toolbar">
+            <button class="btn btn-primary" id="toggleCameraBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="camBtnIcon">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span id="camBtnLabel">Ligar Câmera</span>
+            </button>
+
+            <button class="btn btn-accent" id="openRegisterModalBtn" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="8.5" cy="7" r="4"/>
+                <line x1="20" y1="8" x2="20" y2="14"/>
+                <line x1="23" y1="11" x2="17" y2="11"/>
+              </svg>
+              Cadastrar Este Rosto
+            </button>
+
+            <button class="btn btn-secondary" id="takeSnapshotBtn" title="Tirar foto / captura da tela" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              Capturar Foto
+            </button>
+
+            <button class="btn btn-icon" id="flipCameraBtn" title="Inverter / Espelhar Câmera">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="17 1 21 5 17 9"/>
+                <path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+                <polyline points="7 23 3 19 7 15"/>
+                <path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Coluna da Direita: Painel de Controle e Pessoas -->
+      <aside class="sidebar-column">
+        
+        <!-- Bloco 1: Ajustes Visuais e Sensibilidade -->
+        <div class="card panel-card">
+          <div class="card-header">
+            <div class="card-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              <h3>Opções & Visão</h3>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Seleção de Câmera -->
+            <div class="form-group">
+              <label for="cameraSelect">Dispositivo de Câmera</label>
+              <select id="cameraSelect" class="form-select">
+                <option value="">Carregando câmeras...</option>
+              </select>
+            </div>
+
+            <!-- Slider de Sensibilidade -->
+            <div class="form-group">
+              <div class="slider-header">
+                <label for="thresholdSlider">Precisão do Reconhecimento</label>
+                <span class="slider-val" id="thresholdValue">75%</span>
+              </div>
+              <input type="range" id="thresholdSlider" min="50" max="95" value="75" step="1" class="form-range">
+              <div class="range-sub">
+                <span>Mais tolerante (50%)</span>
+                <span>Mais rigoroso (95%)</span>
+              </div>
+            </div>
+
+            <!-- Toggles de Desenho na Tela -->
+            <div class="toggle-list">
+              <label class="toggle-row">
+                <span class="toggle-info">
+                  <strong>Malha Facial 3D</strong>
+                  <small>Grade poligonal futurista MediaPipe</small>
+                </span>
+                <input type="checkbox" id="toggleMesh" checked>
+                <span class="switch-slider"></span>
+              </label>
+
+              <label class="toggle-row">
+                <span class="toggle-info">
+                  <strong>Caixa Delimitadora e Nome</strong>
+                  <small>Moldura com identificação e porcentagem</small>
+                </span>
+                <input type="checkbox" id="toggleBox" checked>
+                <span class="switch-slider"></span>
+              </label>
+
+              <label class="toggle-row">
+                <span class="toggle-info">
+                  <strong>Pontos dos Olhos e Boca</strong>
+                  <small>Destaca contornos faciais</small>
+                </span>
+                <input type="checkbox" id="togglePoints" checked>
+                <span class="switch-slider"></span>
+              </label>
+
+              <label class="toggle-row">
+                <span class="toggle-info">
+                  <strong>Scanner Holográfico</strong>
+                  <small>Linha laser de varredura biométrica</small>
+                </span>
+                <input type="checkbox" id="toggleScanner" checked>
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bloco 2: Pessoas Cadastradas -->
+        <div class="card panel-card">
+          <div class="card-header">
+            <div class="card-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <h3>Pessoas Reconhecidas (<span id="facesCount">0</span>)</h3>
+            </div>
+            <button class="btn btn-sm btn-ghost" id="clearAllFacesBtn" title="Remover todos os cadastros">
+              Limpar Todos
+            </button>
+          </div>
+
+          <div class="card-body">
+            <!-- Lista de Pessoas Cadastradas -->
+            <div class="faces-list" id="facesList">
+              <div class="empty-state" id="emptyState">
+                <div class="empty-icon">👤</div>
+                <p>Nenhuma pessoa cadastrada ainda.</p>
+                <small>Ligue a câmera, posicione seu rosto e clique em <strong>"Cadastrar Este Rosto"</strong>.</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dicas de Uso -->
+        <div class="info-card">
+          <div class="info-icon">💡</div>
+          <div class="info-content">
+            <strong>Como Funciona:</strong>
+            <p>O <strong>MediaPipe</strong> extrai 468 pontos biométricos tridimensionais em tempo real. O algoritmo gera uma assinatura geométrica invariante à distância e ângulo. Ao cadastrar, o rosto é reconhecido instantaneamente!</p>
+          </div>
+        </div>
+
+      </aside>
+    </main>
+
+    <!-- Modal de Cadastro Facial -->
+    <div class="modal-overlay" id="registerModal">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>Cadastrar Nova Pessoa</h3>
+          <button class="modal-close-btn" id="closeRegisterModalBtn">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="preview-snapshot-wrapper">
+            <canvas id="snapshotPreviewCanvas" width="160" height="160"></canvas>
+            <span class="preview-tag">Rosto Capturado</span>
+          </div>
+
+          <div class="form-group">
+            <label for="personNameInput">Nome da Pessoa:</label>
+            <input type="text" id="personNameInput" class="form-input" placeholder="Ex: Glen, Carlos, Maria..." autocomplete="off">
+            <small class="form-hint">Digite o nome que será exibido na tela ao reconhecer este rosto.</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="cancelRegisterBtn">Cancelar</button>
+          <button class="btn btn-primary" id="savePersonBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Salvar e Reconhecer
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+  </div>
+
+  <!-- Script da Aplicação -->
+  <script src="app.js"></script>
+</body>
+</html>
